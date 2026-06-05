@@ -1,0 +1,33 @@
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+!.env*.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+ENV/
+
+# Node / Next.js
+node_modules/
+frontend/.next/
+frontend/out/
+.vercel
+
+# Build / cache
+dist/
+build/
+*.log
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Large generated / local artifacts
+frontend_dev.log
+*.mp3

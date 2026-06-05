@@ -1,0 +1,183 @@
+# ================================================================
+# AI Sales Automation — Docker Compose
+# Microservices deployment using Docker containers
+#
+# Architecture (from FYP F24-160):
+#   frontend  :3000  →  auth     :2000
+#                    →  crm      :5000  + crm-worker (Celery)
+#                    →  reporting:6000
+#                    →  sales    :8000  + sales-worker (Celery)
+#   All backend services share: Redis :6379 + Supabase (cloud)
+#
+# USAGE:
+#   1. cp backend/.env.example  backend/.env   → fill in credentials
+#      cp frontend/.env.example frontend/.env.local
+#
+#   2. docker compose up --build              # start everything
+#      docker compose up --build -d           # detached (background)
+#
+#   3. docker compose logs -f <service>       # tail logs
+#      docker compose down                    # stop
+#      docker compose down -v                 # stop + remove volumes
+#
+# NOTE: REDIS_URL is overridden to the in-cluster service name.
+#       This takes precedence over the value in backend/.env.
+# ================================================================
+
+version: "3.9"
+
+services:
+
+  # ── Infrastructure ──────────────────────────────────────────
+
+  redis:
+    image: redis:7-alpine
+    container_name: fyp_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Auth Service ─────────────────────────────────────────────
+
+  auth:
+    build:
+      context: ./backend/auth-service
+      dockerfile: Dockerfile
+    container_name: fyp_auth
+    restart: unless-stopped
+    ports:
+      - "2000:2000"
+    env_file:
+      - ./backend/.env
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:2000/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # ── CRM Integration Service ──────────────────────────────────
+
+  crm:
+    build:
+      context: ./backend/crm_integration_service
+      dockerfile: Dockerfile
+    container_name: fyp_crm
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    env_file:
+      - ./backend/.env
+    environment:
+      # Override Redis URL to use Docker service name instead of localhost
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5000/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  crm-worker:
+    build:
+      context: ./backend/crm_integration_service
+      dockerfile: Dockerfile
+    container_name: fyp_crm_worker
+    restart: unless-stopped
+    command: >
+      celery -A app.worker.celery_app worker
+      --loglevel=info -P gevent --concurrency=4
+    env_file:
+      - ./backend/.env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # ── Reporting Service ────────────────────────────────────────
+
+  reporting:
+    build:
+      context: ./backend/reporting_service
+      dockerfile: Dockerfile
+    container_name: fyp_reporting
+    restart: unless-stopped
+    ports:
+      - "6000:6000"
+    env_file:
+      - ./backend/.env
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:6000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ── Sales Agent Service ──────────────────────────────────────
+
+  sales:
+    build:
+      context: ./backend/sales_agent_service
+      dockerfile: Dockerfile
+    container_name: fyp_sales
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./backend/.env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  sales-worker:
+    build:
+      context: ./backend/sales_agent_service
+      dockerfile: Dockerfile
+    container_name: fyp_sales_worker
+    restart: unless-stopped
+    command: >
+      celery -A src.worker.celery_app worker
+      --loglevel=info --concurrency=4
+    env_file:
+      - ./backend/.env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # ── Frontend ─────────────────────────────────────────────────
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # CRM base URL points to the Docker service name
+        NEXT_PUBLIC_API_BASE_URL: http://crm:5000
+    container_name: fyp_frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    depends_on:
+      - auth
+      - crm
+      - reporting
+      - sales
+
+# ── Volumes ──────────────────────────────────────────────────
+volumes:
+  redis_data:

@@ -1,0 +1,63 @@
+# ================================================================
+# Ingress — requires an ingress controller in your cluster.
+# Install nginx ingress: https://kubernetes.github.io/ingress-nginx/
+#   kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.10.0/deploy/static/provider/cloud/deploy.yaml
+#
+# Then update the host values below to match your domain.
+# ================================================================
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: fyp-ingress
+  namespace: fyp
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    # Uncomment for TLS with cert-manager:
+    # cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  ingressClassName: nginx
+  # tls:
+  #   - hosts:
+  #       - yourdomain.com
+  #     secretName: fyp-tls
+  rules:
+    - host: yourdomain.com        # ← replace with your domain
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
+                port:
+                  number: 3000
+          - path: /api/auth
+            pathType: Prefix
+            backend:
+              service:
+                name: auth
+                port:
+                  number: 2000
+          - path: /api/crm
+            pathType: Prefix
+            backend:
+              service:
+                name: crm
+                port:
+                  number: 5000
+          - path: /api/reporting
+            pathType: Prefix
+            backend:
+              service:
+                name: reporting
+                port:
+                  number: 6000
+          - path: /api/sales
+            pathType: Prefix
+            backend:
+              service:
+                name: sales
+                port:
+                  number: 8000

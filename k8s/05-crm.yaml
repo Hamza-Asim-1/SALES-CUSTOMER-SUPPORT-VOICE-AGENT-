@@ -1,0 +1,103 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: crm
+  namespace: fyp
+  labels:
+    app: crm
+    tier: backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: crm
+  template:
+    metadata:
+      labels:
+        app: crm
+        tier: backend
+    spec:
+      containers:
+        - name: crm
+          image: fyp/crm-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5000
+          envFrom:
+            - secretRef:
+                name: backend-secret
+            - configMapRef:
+                name: app-config     # overrides REDIS_URL → redis://redis:6379/0
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "200m"
+            limits:
+              memory: "1Gi"
+              cpu: "1"
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 5000
+            initialDelaySeconds: 15
+            periodSeconds: 10
+
+---
+# CRM Celery worker — same image, different command
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: crm-worker
+  namespace: fyp
+  labels:
+    app: crm-worker
+    tier: backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: crm-worker
+  template:
+    metadata:
+      labels:
+        app: crm-worker
+        tier: backend
+    spec:
+      containers:
+        - name: crm-worker
+          image: fyp/crm-service:latest
+          imagePullPolicy: IfNotPresent
+          command:
+            - celery
+            - -A
+            - app.worker.celery_app
+            - worker
+            - --loglevel=info
+            - -P
+            - gevent
+            - --concurrency=4
+          envFrom:
+            - secretRef:
+                name: backend-secret
+            - configMapRef:
+                name: app-config
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "300m"
+            limits:
+              memory: "1Gi"
+              cpu: "1"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: crm
+  namespace: fyp
+spec:
+  selector:
+    app: crm
+  ports:
+    - port: 5000
+      targetPort: 5000
