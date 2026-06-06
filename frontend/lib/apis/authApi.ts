@@ -5,7 +5,9 @@ export interface AuthUserProfile {
   business_name?: string;
 }
 
-const authBaseUrl = () => process.env.NEXT_PUBLIC_AUTH_URL ?? "http://localhost:2000";
+import { AUTH_API_URL } from "@/lib/api-config";
+
+const authBaseUrl = () => AUTH_API_URL;
 
 export async function fetchCurrentUser(token: string): Promise<AuthUserProfile> {
   const response = await fetch(`${authBaseUrl()}/auth/me`, {

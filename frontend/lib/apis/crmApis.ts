@@ -1,8 +1,8 @@
 // api.ts
 import axios, { AxiosError, AxiosResponse } from 'axios';
+import { CRM_API_URL } from '@/lib/api-config'
 
-// Define the base URL for the API
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://fyp-q0ac.onrender.com';
+const API_BASE_URL = CRM_API_URL
 
 // Create axios instance with default configuration
 const apiClient = axios.create({
@@ -48,10 +48,9 @@ const handleApiError = (error: unknown): ApiResponse => {
     
     // Handle different error scenarios
     if (!axiosError.response) {
-      // Network error or server not responding
       return {
         success: false,
-        error: 'Network error. Please check your connection.',
+        error: `Network error reaching ${API_BASE_URL}. Wait ~30s for Render to wake up, then try Refresh.`,
       };
     }
     

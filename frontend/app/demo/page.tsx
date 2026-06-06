@@ -9,7 +9,9 @@ import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
-const salesBaseUrl = process.env.NEXT_PUBLIC_SALES_URL ?? "http://127.0.0.1:8000"
+import { SALES_API_URL } from "@/lib/api-config"
+
+const salesBaseUrl = SALES_API_URL
 
 type DemoType = "pretrained" | "custom"
 type DemoMode = "sales" | "support"

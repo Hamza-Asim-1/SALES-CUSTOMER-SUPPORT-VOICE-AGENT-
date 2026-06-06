@@ -10,6 +10,7 @@ import { AuthPageShell } from "@/components/auth-page-shell"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { AUTH_API_URL } from "@/lib/api-config"
 
 export default function LoginPage() {
   const router = useRouter()
@@ -18,7 +19,6 @@ export default function LoginPage() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
-  const authBaseUrl = process.env.NEXT_PUBLIC_AUTH_URL ?? "http://localhost:2000"
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -26,7 +26,7 @@ export default function LoginPage() {
     setError("")
 
     try {
-      const response = await fetch(`${authBaseUrl}/auth/login`, {
+      const response = await fetch(`${AUTH_API_URL}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
@@ -58,9 +58,7 @@ export default function LoginPage() {
         setError(data.detail || "Login failed")
       }
     } catch {
-      setError(
-        `Cannot reach the auth server. Start it with: cd backend/auth-service && uvicorn app.main:app --reload --port 2000`
-      )
+      setError(`Cannot reach the auth server at ${AUTH_API_URL}. Wait ~30s for Render to wake up.`)
     } finally {
       setIsLoading(false)
     }

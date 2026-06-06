@@ -29,6 +29,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.get("/")
+def read_root():
+    return {"message": "CRM Integration Service", "status": "ok"}
+
+
 @app.post("/receive_data")
 async def receive_data(user_data: Request):
     data = await user_data.json()
@@ -84,7 +89,7 @@ async def get_mapped_user_data(user_id: str = Query(..., description="User ID to
         if not response:
             raise HTTPException(status_code=404, detail=f"Error fetching data: {response.data}")
 
-        return {"data": response}
+        return {"data": response.data if hasattr(response, "data") else response}
     
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

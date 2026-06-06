@@ -7,12 +7,12 @@ import { AuthPageShell } from "@/components/auth-page-shell"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { AUTH_API_URL } from "@/lib/api-config"
 
 export default function SignupPage() {
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
-  const authBaseUrl = process.env.NEXT_PUBLIC_AUTH_URL ?? "http://localhost:2000"
   const [formData, setFormData] = useState({
     businessName: "",
     email: "",
@@ -26,7 +26,7 @@ export default function SignupPage() {
     setError("")
 
     try {
-      const response = await fetch(`${authBaseUrl}/auth/signup`, {
+      const response = await fetch(`${AUTH_API_URL}/auth/signup`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -52,7 +52,7 @@ export default function SignupPage() {
       }
     } catch {
       setError(
-        `Cannot reach the auth server at ${authBaseUrl}. Start it with: cd backend/auth-service && uvicorn app.main:app --reload --port 2000`
+        `Cannot reach the auth server at ${AUTH_API_URL}. Check that fyp-auth is running on Render.`
       )
     } finally {
       setIsLoading(false)

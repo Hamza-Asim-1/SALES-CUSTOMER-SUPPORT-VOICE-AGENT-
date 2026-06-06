@@ -71,16 +71,20 @@ export default function DashboardPage() {
 
   // Add fetchUserData outside of useEffect for reusability
   const fetchUserData = async () => {
-    if (!user?.id) return
+    if (!user?.id) {
+      setError(null)
+      return
+    }
 
     setIsLoading(true)
     setError(null)
 
     try {
       const response = await ApiService.getMappedUserData(user.id)
+      const rows = response.data?.data?.data ?? response.data?.data
 
-      if (response.success && response.data?.data?.data) {
-        const transformedData: Contact[] = response.data.data.data.map((item: any, index: number) => ({
+      if (response.success && Array.isArray(rows)) {
+        const transformedData: Contact[] = rows.map((item: any, index: number) => ({
           id: index,
           name: item.Name || "Unknown",
           email: item.Email || "",
@@ -94,11 +98,16 @@ export default function DashboardPage() {
         setCrmData(transformedData)
         staticCrmData = transformedData
         setIsLoaded(true)
+      } else if (response.success) {
+        setCrmData([])
+        staticCrmData = []
+        setIsLoaded(true)
       } else {
         throw new Error(response.error || "Failed to fetch data")
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "An error occurred while fetching data")
+      setIsLoaded(true)
       console.error("Error fetching user data:", err)
     } finally {
       setIsLoading(false)
@@ -212,8 +221,17 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <motion.div initial="hidden" animate={isLoaded ? "visible" : "hidden"} variants={containerVariants}>
-          {isLoading ? (
+        <motion.div initial="hidden" animate="visible" variants={containerVariants}>
+          {!user?.id ? (
+            <Card className="mb-8">
+              <CardContent className="flex items-center justify-center h-32">
+                <div className="flex items-center gap-2">
+                  <RefreshCw className="h-5 w-5 animate-spin" />
+                  <p>Loading your profile…</p>
+                </div>
+              </CardContent>
+            </Card>
+          ) : isLoading ? (
             <Card className="mb-8">
               <CardContent className="flex items-center justify-center h-32">
                 <div className="flex items-center gap-2">

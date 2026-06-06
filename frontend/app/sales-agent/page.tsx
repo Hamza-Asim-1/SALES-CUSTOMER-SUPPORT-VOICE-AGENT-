@@ -148,10 +148,10 @@ export default function SalesAgentPage() {
       }
       const userId = user.id
       const response = await ApiService.getMappedUserData(userId)
+      const rows = response.data?.data?.data ?? response.data?.data
 
-      if (response.success && response.data?.data?.data) {
-        // Transform the data to match our Lead interface
-        const transformedData: Lead[] = response.data.data.data.map((item: any, index: number) => {
+      if (response.success && Array.isArray(rows)) {
+        const transformedData: Lead[] = rows.map((item: any, index: number) => {
           // Extract name, contact, and email from the data if available
           // If not available, generate placeholder data
           const name = item.Name || `Lead ${index + 1}`

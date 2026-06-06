@@ -5,7 +5,9 @@ import { motion } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
-const salesBaseUrl = process.env.NEXT_PUBLIC_SALES_URL ?? 'http://127.0.0.1:8000'
+import { SALES_API_URL } from '@/lib/api-config'
+
+const salesBaseUrl = SALES_API_URL
 
 type ChatMessage = { type: 'user' | 'ai'; text: string }
 
