@@ -34,6 +34,11 @@ def read_root():
     return {"message": "CRM Integration Service", "status": "ok"}
 
 
+@app.get("/health")
+def health():
+    return {"status": "ok", "service": "crm_integration"}
+
+
 @app.post("/receive_data")
 async def receive_data(user_data: Request):
     data = await user_data.json()

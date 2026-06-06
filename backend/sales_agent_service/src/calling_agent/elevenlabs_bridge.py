@@ -25,6 +25,7 @@ from utils.prompts import (
 from utils.example_company.example_customer import example_customer
 from utils.example_company.products_data import Products_data
 from calling_agent import demo_config
+from calling_agent.public_url import resolve_public_url
 
 ELEVENLABS_API_BASE = "https://api.elevenlabs.io/v1"
 _executor = ThreadPoolExecutor(max_workers=4)
@@ -554,7 +555,7 @@ def register_elevenlabs_routes(app):
         signed URLs and killing the live WebSocket session).
         """
         agent_id = os.getenv("ELEVENLABS_AGENT_ID")
-        public_url = (os.getenv("PUBLIC_URL") or "").rstrip("/")
+        public_url = resolve_public_url()
         cfg = demo_config.current()
         lite = request.args.get("lite") in ("1", "true", "yes")
 

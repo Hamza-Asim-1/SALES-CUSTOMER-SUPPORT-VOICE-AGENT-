@@ -19,6 +19,7 @@ import os
 
 from flask import jsonify, request, Response
 from calling_agent import demo_config
+from calling_agent.public_url import resolve_public_url
 
 
 def _background_sound() -> str:
@@ -37,7 +38,7 @@ def build_vapi_assistant() -> dict:
     from calling_agent.elevenlabs_bridge import _build_system_prompt, _opening_hook
 
     cfg = demo_config.current()
-    public_url = (os.getenv("PUBLIC_URL") or "").rstrip("/")
+    public_url = resolve_public_url()
     if not public_url:
         raise ValueError(
             "PUBLIC_URL is not set. On Render set PUBLIC_URL=https://fyp-sales.onrender.com "

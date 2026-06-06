@@ -1,8 +1,8 @@
 // api.ts
 import axios, { AxiosError, AxiosResponse } from 'axios';
-import { CRM_API_URL } from '@/lib/api-config'
+import { getCrmApiBase } from '@/lib/crm-url'
 
-const API_BASE_URL = CRM_API_URL
+const API_BASE_URL = getCrmApiBase()
 
 // Create axios instance with default configuration
 const apiClient = axios.create({
@@ -10,8 +10,31 @@ const apiClient = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 200000, // 30 seconds timeout
+  timeout: 120000,
 });
+
+const RENDER_WAKE_RETRIES = 3
+const RENDER_WAKE_DELAY_MS = 18000
+
+async function withRenderRetry<T>(fn: () => Promise<T>): Promise<T> {
+  let lastError: unknown
+  for (let attempt = 0; attempt < RENDER_WAKE_RETRIES; attempt++) {
+    try {
+      return await fn()
+    } catch (error) {
+      lastError = error
+      const isColdStart =
+        axios.isAxiosError(error) &&
+        !error.response &&
+        (error.code === 'ECONNABORTED' || error.message.includes('Network Error'))
+      if (!isColdStart || attempt === RENDER_WAKE_RETRIES - 1) {
+        throw error
+      }
+      await new Promise((resolve) => setTimeout(resolve, RENDER_WAKE_DELAY_MS))
+    }
+  }
+  throw lastError
+}
 
 // Interface definitions based on your API structure
 interface UserData {
@@ -48,9 +71,11 @@ const handleApiError = (error: unknown): ApiResponse => {
     
     // Handle different error scenarios
     if (!axiosError.response) {
+      const target =
+        typeof window !== 'undefined' ? 'CRM service (via /api/crm proxy)' : API_BASE_URL
       return {
         success: false,
-        error: `Network error reaching ${API_BASE_URL}. Wait ~30s for Render to wake up, then try Refresh.`,
+        error: `Network error reaching ${target}. Render free tier may be waking up — wait ~30s and click Refresh.`,
       };
     }
     
@@ -123,7 +148,7 @@ export const ApiService = {
         return { success: false, error: 'File name is required' };
       }
 
-      const response = await apiClient.post('/receive_data', userData);
+      const response = await withRenderRetry(() => apiClient.post('/receive_data', userData));
       return handleApiResponse(response);
     } catch (error) {
       return handleApiError(error);
@@ -142,9 +167,9 @@ export const ApiService = {
         return { success: false, error: 'User ID is required' };
       }
 
-      const response = await apiClient.get('/get-user-data/', {
-        params: { user_id: userId },
-      });
+      const response = await withRenderRetry(() =>
+        apiClient.get('/get-user-data/', { params: { user_id: userId } })
+      );
       return handleApiResponse(response);
     } catch (error) {
       return handleApiError(error);
@@ -163,9 +188,9 @@ export const ApiService = {
         return { success: false, error: 'User ID is required' };
       }
 
-      const response = await apiClient.get('/get-user-mapped-data/', {
-        params: { user_id: userId },
-      });
+      const response = await withRenderRetry(() =>
+        apiClient.get('/get-user-mapped-data/', { params: { user_id: userId } })
+      );
       return handleApiResponse(response);
     } catch (error) {
       return handleApiError(error);
@@ -191,12 +216,14 @@ export const ApiService = {
         return { success: false, error: 'Number of agents must be greater than 0' };
       }
 
-      const response = await apiClient.post('/start-processing', null, {
-        params: {
-          user_id: userId,
-          num_agents: numAgents
-        }
-      });
+      const response = await withRenderRetry(() =>
+        apiClient.post('/start-processing', null, {
+          params: {
+            user_id: userId,
+            num_agents: numAgents
+          }
+        })
+      );
       return handleApiResponse(response);
     } catch (error) {
       return handleApiError(error);
@@ -215,9 +242,9 @@ export const ApiService = {
         return { success: false, error: 'User ID is required' };
       }
 
-      const response = await apiClient.post('/stop-processing', null, {
-        params: { user_id: userId }
-      });
+      const response = await withRenderRetry(() =>
+        apiClient.post('/stop-processing', null, { params: { user_id: userId } })
+      );
       return handleApiResponse(response);
     } catch (error) {
       return handleApiError(error);
@@ -236,7 +263,9 @@ export const ApiService = {
         return { success: false, error: 'User ID is required' };
       }
 
-      const response = await apiClient.get(`/status/${userId}`);
+      const response = await withRenderRetry(() =>
+        apiClient.get(`/status/${userId}`)
+      );
       return handleApiResponse(response);
     } catch (error) {
       return handleApiError(error);

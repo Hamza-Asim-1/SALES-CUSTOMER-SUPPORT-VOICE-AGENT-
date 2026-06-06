@@ -31,7 +31,7 @@ services:
     runtime: docker
     rootDir: backend/crm_integration_service
     dockerfilePath: ./Dockerfile
-    healthCheckPath: /
+    healthCheckPath: /health
     envVars:
       - key: SUPABASE_URL
         sync: false
