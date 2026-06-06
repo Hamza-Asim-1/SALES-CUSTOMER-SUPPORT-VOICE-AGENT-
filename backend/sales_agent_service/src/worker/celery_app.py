@@ -1,14 +1,25 @@
+import os
+import ssl
+
 from celery import Celery
+
+redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
 celery_app = Celery(
     "worker",
-    broker="redis://localhost:6379/0",    # Redis as message broker
-    backend="redis://localhost:6379/0",      # Redis as result backend
-    include=['src.worker.tasks']  # Add this line to include tasks
+    broker=redis_url,
+    backend=redis_url,
+    include=["src.worker.tasks"],
 )
 
-celery_app.conf.update(
-    task_serializer="json",
-    result_serializer="json",
-    accept_content=["json"],
-)
+conf = {
+    "task_serializer": "json",
+    "result_serializer": "json",
+    "accept_content": ["json"],
+}
+
+if redis_url.startswith("rediss://"):
+    conf["broker_use_ssl"] = {"ssl_cert_reqs": ssl.CERT_NONE}
+    conf["redis_backend_use_ssl"] = {"ssl_cert_reqs": ssl.CERT_NONE}
+
+celery_app.conf.update(conf)
