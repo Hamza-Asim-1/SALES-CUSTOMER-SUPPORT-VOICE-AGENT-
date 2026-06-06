@@ -40,7 +40,8 @@ def build_vapi_assistant() -> dict:
     public_url = (os.getenv("PUBLIC_URL") or "").rstrip("/")
     if not public_url:
         raise ValueError(
-            "PUBLIC_URL is not set. Start ngrok on port 8000 so VAPI can reach /v1/chat/completions."
+            "PUBLIC_URL is not set. On Render set PUBLIC_URL=https://fyp-sales.onrender.com "
+            "(local dev: use your ngrok https URL on port 8000)."
         )
 
     voice_provider = (os.getenv("VAPI_VOICE_PROVIDER") or "vapi").lower()
@@ -128,8 +129,8 @@ def register_vapi_routes(app):
                 {
                     "ready": False,
                     "error": (
-                        "VAPI_PUBLIC_KEY is not set in backend .env. "
-                        "Get your public key from https://dashboard.vapi.ai"
+                        "VAPI_PUBLIC_KEY is not set. Add it in Render → fyp-sales → Environment "
+                        "(get your public key from https://dashboard.vapi.ai)."
                     ),
                     "assistant_preview": assistant,
                 }

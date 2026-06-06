@@ -358,7 +358,7 @@ function VoiceCall({
       if (!res.ok || !data.ready || !data.assistant || !data.public_key) {
         setError(
           data.error ||
-            'Voice agent not ready. Ensure the backend is running and ngrok is up on port 8000.'
+            'Voice agent not ready. On Render (fyp-sales), set VAPI_PUBLIC_KEY and PUBLIC_URL=https://fyp-sales.onrender.com, then redeploy.'
         )
         setConnecting(false)
         return
@@ -528,7 +528,7 @@ function VoiceCall({
       </div>
 
       <p className="text-xs text-gray-400 text-center mt-3">
-        Brain: LangGraph + Groq via custom LLM · Voice: VAPI (STT + TTS) · ngrok must run on port 8000
+        Brain: LangGraph + Groq via custom LLM · Voice: VAPI (STT + TTS) · Production: sales agent on Render
       </p>
     </div>
   )
