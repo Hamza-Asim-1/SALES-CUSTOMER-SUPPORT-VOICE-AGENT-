@@ -23,7 +23,17 @@ load_dotenv(_src_dir.parent.parent / ".env", override=True)
 
 app = Flask(__name__)
 
-CORS(app, origins=["http://localhost:3000", "http://localhost:3001", "https://ai-sales-automation-front-end.vercel.app"], supports_credentials=True)
+CORS(
+    app,
+    origins=[
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3000",
+        "https://sales-customer-support-voice-agent-1bf4w0x8s.vercel.app",
+        r"https://.*\.vercel\.app",
+    ],
+    supports_credentials=True,
+)
 
 # ElevenLabs Conversational AI bridge: exposes an OpenAI-compatible /v1/chat/completions
 # endpoint (backed by the LangGraph/Groq sales agent) plus /elevenlabs/session.

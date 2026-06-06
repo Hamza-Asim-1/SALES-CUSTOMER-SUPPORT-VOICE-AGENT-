@@ -13,14 +13,20 @@ from app.supabase_client import supabase
 
 app = FastAPI()
 
-# Add CORS middleware to allow ccross-origin requests
+ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "https://sales-customer-support-voice-agent-1bf4w0x8s.vercel.app",
+]
+
+# Add CORS middleware to allow cross-origin requests
 app.add_middleware(
     CORSMiddleware,
-    
-    allow_origins=["http://localhost:3000","https://ai-sales-automation-front-end.vercel.app"],  # Allows all origins, you might want to restrict this in production
+    allow_origins=ALLOWED_ORIGINS,
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
-    allow_methods=["*"],  # Allows all methods
-    allow_headers=["*"],  # Allows all headers
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 @app.post("/receive_data")
