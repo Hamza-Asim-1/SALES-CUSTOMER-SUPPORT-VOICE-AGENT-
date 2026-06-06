@@ -29,20 +29,10 @@ const nextConfig = {
       ? reportingUrl
       : `${reportingUrl}/api/v1`
 
-    const crmRaw = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "").trim()
-    const crmMatch = crmRaw.match(/https?:\/\/[^\s,]+/)
-    const crmUrl = (
-      crmMatch ? crmMatch[0] : crmRaw.split(/\s+/)[0] || "https://fyp-crm.onrender.com"
-    ).replace(/\/$/, "")
-
     return [
       {
         source: "/api/reporting/:path*",
         destination: `${reportingBase}/:path*`,
-      },
-      {
-        source: "/api/crm/:path*",
-        destination: `${crmUrl}/:path*`,
       },
     ]
   },
