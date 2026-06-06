@@ -42,6 +42,50 @@ function friendlyEndReason(reason: string): string {
   return `Call ended: ${reason.replace(/-/g, ' ')}`
 }
 
+async function extractVapiError(e: unknown): Promise<string> {
+  if (!e) return 'Voice error'
+  if (e instanceof Error) return e.message
+  if (typeof e === 'string') return e
+
+  // VAPI sometimes emits a fetch Response (e.g. failed call to the LLM endpoint).
+  if (typeof Response !== 'undefined' && e instanceof Response) {
+    let body = ''
+    try {
+      body = await e.text()
+    } catch {
+      /* ignore */
+    }
+    return `Voice provider error (HTTP ${e.status} ${e.statusText})${body ? `: ${body.slice(0, 300)}` : ''}`
+  }
+
+  if (typeof e === 'object') {
+    const obj = e as Record<string, unknown>
+    // Common VAPI error shapes: { error }, { errorMsg }, { message }, { error: { message } }
+    const candidates = [
+      obj.errorMsg,
+      obj.message,
+      (obj.error as Record<string, unknown> | undefined)?.message,
+      (obj.error as Record<string, unknown> | undefined)?.msg,
+      typeof obj.error === 'string' ? obj.error : undefined,
+      (obj.error as Record<string, unknown> | undefined)?.error,
+    ]
+    for (const c of candidates) {
+      if (typeof c === 'string' && c.trim()) return c.trim()
+    }
+    // Nested Response inside { error }
+    if (typeof Response !== 'undefined' && obj.error instanceof Response) {
+      return extractVapiError(obj.error)
+    }
+    try {
+      const json = JSON.stringify(obj)
+      if (json && json !== '{}') return json.slice(0, 400)
+    } catch {
+      /* ignore */
+    }
+  }
+  return 'Voice error (no details provided by the voice provider)'
+}
+
 function isDailyRoomCloseNoise(msg: string): boolean {
   return (
     msg.includes('Meeting ended due to ejection') ||
@@ -333,11 +377,15 @@ function VoiceCall({
         }
       })
       vapi.on('error', (e: unknown) => {
-        const msg = e instanceof Error ? e.message : String(e)
-        // Daily.co emits these when the room closes — surfaced via status-update instead.
-        if (isDailyRoomCloseNoise(msg)) return
-        setError(msg || 'Voice error')
-        setConnecting(false)
+        // VAPI emits structured objects (and sometimes fetch Responses) — String(e)
+        // would print "[object Object]" and hide the real cause, so parse it.
+        console.error('[vapi error]', e)
+        void extractVapiError(e).then((msg) => {
+          // Daily.co emits these when the room closes — surfaced via status-update instead.
+          if (isDailyRoomCloseNoise(msg)) return
+          setError(msg || 'Voice error')
+          setConnecting(false)
+        })
       })
     },
     [setError, setMessages]

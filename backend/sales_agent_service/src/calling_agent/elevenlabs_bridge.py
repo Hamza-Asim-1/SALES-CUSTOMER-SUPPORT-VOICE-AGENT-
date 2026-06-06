@@ -372,10 +372,16 @@ def _sse_chunk(payload: dict) -> str:
 def register_elevenlabs_routes(app):
     @app.before_request
     def _log_voice_requests():
-        if request.path.startswith("/v1/"):
+        if request.path.startswith("/v1") or "chat/completions" in request.path:
             print(f"[voice-http] {request.method} {request.path} from={request.remote_addr}")
 
+    # VAPI custom-llm behaviour differs by version: some POST to the exact `model.url`,
+    # others append `/chat/completions` to it. Register every variant so the LLM is
+    # reachable no matter how the provider constructs the path.
     @app.route("/v1/chat/completions", methods=["POST", "OPTIONS"])
+    @app.route("/chat/completions", methods=["POST", "OPTIONS"])
+    @app.route("/v1/chat/completions/chat/completions", methods=["POST", "OPTIONS"])
+    @app.route("/v1", methods=["POST", "OPTIONS"])
     def chat_completions():
         if request.method == "OPTIONS":
             resp = Response("", status=204)
