@@ -1,0 +1,94 @@
+# Render Blueprint — one service per backend module.
+# Dashboard manual setup: match rootDir + dockerfilePath for each service.
+#
+# Deploy: Render Dashboard → New → Blueprint → connect this repo.
+
+services:
+  - type: web
+    name: fyp-auth
+    runtime: docker
+    rootDir: backend/auth-service
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      - key: supabase_url
+        sync: false
+      - key: supabase_key
+        sync: false
+      - key: SERVICE_ROLE
+        sync: false
+      - key: encryption_key
+        sync: false
+      - key: secret_key
+        sync: false
+
+  - type: web
+    name: fyp-crm
+    runtime: docker
+    rootDir: backend/crm_integration_service
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SERVICE_ROLE
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+
+  - type: worker
+    name: fyp-crm-worker
+    runtime: docker
+    rootDir: backend/crm_integration_service
+    dockerfilePath: ./Dockerfile
+    dockerCommand: celery -A app.worker.celery_app worker --loglevel=info -P gevent --concurrency=4
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SERVICE_ROLE
+        sync: false
+      - key: REDIS_URL
+        sync: false
+
+  - type: web
+    name: fyp-reporting
+    runtime: docker
+    rootDir: backend/reporting_service
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false
+      - key: QDRANT_CLUSTER_URL
+        sync: false
+      - key: QDRANT_API_KEY
+        sync: false
+      - key: SEGMIND_API_KEY
+        sync: false
+      - key: MEM0_API_KEY
+        sync: false
+
+  - type: web
+    name: fyp-sales
+    runtime: docker
+    rootDir: backend/sales_agent_service
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SERVICE_ROLE
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: PUBLIC_URL
+        sync: false
+      - key: VAPI_PUBLIC_KEY
+        sync: false
+      - key: REDIS_URL
+        sync: false

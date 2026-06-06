@@ -13,9 +13,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
+WORKDIR /app/src
+
 EXPOSE 8000
 
-# Default: run the Flask voice/demo API (used by the browser /voice-demo and
-# optionally SignalWire for outbound calls when fully configured).
-# Override CMD in docker-compose to run the Celery worker or FastAPI instead.
-CMD ["python", "-m", "src.calling_agent.main"]
+# Imports use `calling_agent.*` and `sales_agent.*` — run from src/ (same as local dev).
+# Override CMD in docker-compose to run the Celery worker instead.
+CMD ["python", "-m", "calling_agent.main"]
