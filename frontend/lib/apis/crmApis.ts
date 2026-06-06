@@ -71,11 +71,12 @@ const handleApiError = (error: unknown): ApiResponse => {
     
     // Handle different error scenarios
     if (!axiosError.response) {
+      const code = axiosError.code ? ` (${axiosError.code})` : ''
       const target =
-        typeof window !== 'undefined' ? 'CRM service (via /api/crm proxy)' : API_BASE_URL
+        typeof window !== 'undefined' ? 'CRM service via /api/crm' : API_BASE_URL
       return {
         success: false,
-        error: `Network error reaching ${target}. Render free tier may be waking up — wait ~30s and click Refresh.`,
+        error: `Cannot reach ${target}${code}. If Render was asleep, wait ~30s and click Refresh.`,
       };
     }
     
