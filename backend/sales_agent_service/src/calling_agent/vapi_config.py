@@ -29,15 +29,18 @@ def _background_sound() -> str:
     return raw or "office"
 
 
-def build_vapi_assistant() -> dict:
-    """Inline VAPI assistant config using current demo_config + our custom LLM.
+def build_vapi_assistant(session=None) -> dict:
+    """Inline VAPI assistant config using our custom LLM.
 
-    The system prompt and opening line come from the SAME builders the ElevenLabs
-    path used, so sales vs. customer-support behaviour is identical across both.
+    With a `session` (authenticated dashboard call) the assistant is bound to a
+    specific business + lead: the custom-LLM URL carries ?session_id=... and the
+    system prompt / first line come from that session. Without one it falls back
+    to the shared global demo_config (anonymous /voice-demo).
     """
-    from calling_agent.elevenlabs_bridge import _build_system_prompt, _opening_hook
+    from calling_agent.elevenlabs_bridge import (
+        _build_system_prompt, _opening_hook, _opening_hook_session,
+    )
 
-    cfg = demo_config.current()
     public_url = resolve_public_url()
     if not public_url:
         raise ValueError(
@@ -49,13 +52,25 @@ def build_vapi_assistant() -> dict:
     voice_id = os.getenv("VAPI_VOICE_ID") or ("Elliot" if voice_provider == "vapi" else "79a125e8-cd45-4c13-8a67-188112f4dc46")
     transcriber = (os.getenv("VAPI_TRANSCRIBER_PROVIDER") or "deepgram").lower()
 
-    # VAPI expects the full chat/completions URL (unlike ElevenLabs which uses /v1 base).
-    llm_url = f"{public_url}/v1/chat/completions"
+    if session is not None:
+        mode_label = "support" if session.mode == "support" else "sales"
+        company_name = session.company_name or "AI Sales"
+        first_message = _opening_hook_session(session)
+        system_prompt = _build_system_prompt(session=session)
+        # session_id flows to the custom LLM so it loads the right business + tools.
+        llm_url = f"{public_url}/v1/chat/completions?session_id={session.session_id}"
+    else:
+        cfg = demo_config.current()
+        mode_label = "support" if cfg.mode == "support" else "sales"
+        company_name = cfg.company_name
+        first_message = _opening_hook(cfg)
+        system_prompt = _build_system_prompt()
+        # VAPI expects the full chat/completions URL (unlike ElevenLabs which uses /v1 base).
+        llm_url = f"{public_url}/v1/chat/completions"
 
-    mode_label = "support" if cfg.mode == "support" else "sales"
     assistant = {
-        "name": f"{cfg.company_name} — {mode_label}",
-        "firstMessage": _opening_hook(cfg),
+        "name": f"{company_name} — {mode_label}",
+        "firstMessage": first_message,
         "firstMessageMode": "assistant-speaks-first",
         # Realistic ambience so the call doesn't sound sterile.
         "backgroundSound": _background_sound(),
@@ -65,7 +80,7 @@ def build_vapi_assistant() -> dict:
             "model": "sales-agent",
             "temperature": 0.6,
             "messages": [
-                {"role": "system", "content": _build_system_prompt()},
+                {"role": "system", "content": system_prompt},
             ],
         },
         "voice": {

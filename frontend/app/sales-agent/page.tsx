@@ -19,9 +19,10 @@ import { Check, Filter, RefreshCw } from "lucide-react"
 import { useAuth } from "@/hooks/useAuth"
 import { useRouter } from "next/navigation"
 import { ApiService } from "@/lib/apis/crmApis"
-import { AlertCircle, CheckCircle, PhoneCall, PhoneOff, Users } from "lucide-react"
+import { AlertCircle, CheckCircle, PhoneCall, PhoneOff, Users, Phone } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Slider } from "@/components/ui/slider"
+import { LiveCall } from "@/components/voice/LiveCall"
 
 // Replace the dummy leads with an interface for the real data
 interface Lead {
@@ -137,6 +138,10 @@ export default function SalesAgentPage() {
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 10 // Show 10 leads per page
 
+  // Live browser voice call (per-lead). No telephony — opens the AI agent in-browser.
+  const [callLead, setCallLead] = useState<Lead | null>(null)
+  const [callMode, setCallMode] = useState<"sales" | "support">("sales")
+
   // Add a function to fetch data from the API
   const fetchLeadData = async () => {
     setIsLoading(true)
@@ -152,23 +157,22 @@ export default function SalesAgentPage() {
 
       if (response.success && Array.isArray(rows)) {
         const transformedData: Lead[] = rows.map((item: any, index: number) => {
-          // Extract name, contact, and email from the data if available
-          // If not available, generate placeholder data
+          // Use real CRM fields only — never fabricate contact/email.
           const name = item.Name || `Lead ${index + 1}`
-          const contact = item.Contact || item.Phone || "N/A"
-          const email = item.Email || `lead${index + 1}@example.com`
+          const contact = item.Contact || item.Phone || "—"
+          const email = item.Email || "—"
 
           return {
             id: index,
             user_id: item.user_id || userId,
-            Conversion: item.Conversion || "N/A",
-            task_id: item.task_id || "N/A",
+            Conversion: item.Conversion || "—",
+            task_id: item.task_id || "—",
             status: item.status || "New",
-            processing_start_time: item.processing_start_time || "N/A",
-            processing_end_time: item.processing_end_time || "N/A",
+            processing_start_time: item.processing_start_time || "—",
+            processing_end_time: item.processing_end_time || "—",
             File_Name: item.File_Name || "Unknown",
-            priorityScore: Math.floor(Math.random() * 100), // Random score for now
-            // Add the display fields
+            // Deterministic ordering: keep CRM order (newest uploads first handled by API).
+            priorityScore: rows.length - index,
             Name: name,
             Contact: contact,
             Email: email,
@@ -293,12 +297,35 @@ export default function SalesAgentPage() {
   return (
     <DashboardLayout>
       <div className="p-4">
-        <h1 className="text-3xl font-bold mb-6 ml-4">AI Sales Agent</h1>
+        <div className="flex items-center justify-between mb-6 ml-4 mr-2">
+          <h1 className="text-3xl font-bold">AI Sales Agent</h1>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">Call mode:</span>
+            <Button
+              size="sm"
+              variant={callMode === "sales" ? "default" : "outline"}
+              onClick={() => setCallMode("sales")}
+            >
+              Sales
+            </Button>
+            <Button
+              size="sm"
+              variant={callMode === "support" ? "default" : "outline"}
+              onClick={() => setCallMode("support")}
+            >
+              Support
+            </Button>
+          </div>
+        </div>
 
         <Card className="mb-6">
           <CardHeader>
-            <CardTitle>Sales Agent Control Panel</CardTitle>
-            <CardDescription>Configure and manage your AI sales agents</CardDescription>
+            <CardTitle>Batch Lead Processing (simulation)</CardTitle>
+            <CardDescription>
+              Simulates dispatching multiple agents across your lead list for reporting.
+              For a real conversation, press <strong>Call</strong> on any lead below to talk to the
+              AI agent live in your browser.
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid gap-6 md:grid-cols-2">
@@ -490,6 +517,16 @@ export default function SalesAgentPage() {
                                 <Button size="sm" variant="outline" onClick={() => setSelectedLead(lead)}>
                                   View
                                 </Button>
+                                <Button
+                                  size="sm"
+                                  className="bg-blue-600 hover:bg-blue-700"
+                                  onClick={() => setCallLead(lead)}
+                                  disabled={!user?.id}
+                                  title={user?.id ? "Start a live voice call with the AI agent" : "Log in first"}
+                                >
+                                  <Phone className="h-4 w-4 mr-1" />
+                                  Call
+                                </Button>
                               </div>
                             </TableCell>
                           </TableRow>
@@ -626,6 +663,25 @@ export default function SalesAgentPage() {
             </Table>
           </CardContent>
         </Card>
+
+        {callLead && user?.id && (
+          <Dialog open={!!callLead} onOpenChange={(open) => !open && setCallLead(null)}>
+            <DialogContent className="max-w-4xl">
+              <DialogHeader>
+                <DialogTitle>Live Voice Call</DialogTitle>
+                <DialogDescription>
+                  Talking to {callLead.Name} — realtime transcript, sentiment and orders below.
+                </DialogDescription>
+              </DialogHeader>
+              <LiveCall
+                userId={String(user.id)}
+                lead={callLead}
+                mode={callMode}
+                onClose={() => setCallLead(null)}
+              />
+            </DialogContent>
+          </Dialog>
+        )}
 
         {selectedLead && (
           <Dialog open={!!selectedLead} onOpenChange={(open) => !open && setSelectedLead(null)}>

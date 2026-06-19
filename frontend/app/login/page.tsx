@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation"
 import { useDispatch } from "react-redux"
 import { login } from "@/app/store/features/authSlice"
 import { fetchCurrentUser } from "@/lib/apis/authApi"
+import { getCompanyProfile } from "@/lib/apis/salesApi"
 import { AuthPageShell } from "@/components/auth-page-shell"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -53,7 +54,15 @@ export default function LoginPage() {
             token,
           })
         )
-        router.push("/dashboard")
+        // First-time businesses (no saved profile) go to onboarding to train the agent.
+        let destination = "/dashboard"
+        try {
+          const existing = await getCompanyProfile(profile.id)
+          if (!existing) destination = "/onboarding"
+        } catch {
+          /* if the profile check fails, fall through to the dashboard */
+        }
+        router.push(destination)
       } else {
         setError(data.detail || "Login failed")
       }

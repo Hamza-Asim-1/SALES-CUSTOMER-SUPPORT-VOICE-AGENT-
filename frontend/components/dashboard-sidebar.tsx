@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useSelector } from 'react-redux';
 import { usePathname } from "next/navigation"
-import { BarChart3, Database, Headphones, Home, Settings, LogOut, Bell, HelpCircle } from "lucide-react"
+import { BarChart3, Database, Headphones, Home, Settings, LogOut, Bell, HelpCircle, ShoppingCart, Package } from "lucide-react"
 import { motion } from "framer-motion"
 import { cn } from "@/lib/utils"
 import { RootState } from "@/app/store/store";
@@ -62,6 +62,18 @@ export function DashboardSidebar() {
       icon: Headphones,
       href: "/sales-agent",
       isActive: pathname === "/sales-agent",
+    },
+    {
+      title: "Products",
+      icon: Package,
+      href: "/products",
+      isActive: pathname === "/products",
+    },
+    {
+      title: "Orders",
+      icon: ShoppingCart,
+      href: "/orders",
+      isActive: pathname === "/orders",
     },
     {
       title: "Chabot Embed",

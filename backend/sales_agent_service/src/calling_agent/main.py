@@ -43,6 +43,15 @@ register_elevenlabs_routes(app)
 from calling_agent.vapi_config import register_vapi_routes
 register_vapi_routes(app)
 
+# Dashboard-native voice agent: per-call sessions (business + lead context),
+# realtime sentiment/escalation SSE, and the business REST API (profile,
+# products with live stock/price, orders) used by the dashboard + voice tools.
+from calling_agent.voice_session_api import register_voice_session_routes
+register_voice_session_routes(app)
+
+from calling_agent.company_api import register_company_routes
+register_company_routes(app)
+
 
 
 

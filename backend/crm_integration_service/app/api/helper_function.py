@@ -4,10 +4,14 @@ import pandas as pd
 import psycopg2
 import logging
 from ..data_pipeline.DatasetMapper import DatasetMapper
+import os
 
 
-# Database connection string
-PSQL_URL = "postgresql://postgres:hamzathegreat1234@db.gtizhtnrlztkccysrtkg.supabase.co:5432/postgres"
+# Database connection string — read from env (never hardcode credentials).
+# Set PSQL_URL in backend/.env (Supabase → Settings → Database → Connection string → URI).
+PSQL_URL = os.getenv("PSQL_URL")
+if not PSQL_URL:
+    logging.warning("PSQL_URL is not set — psycopg2 table operations will fail until it is configured.")
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 

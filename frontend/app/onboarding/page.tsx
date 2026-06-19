@@ -1,17 +1,24 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/hooks/useAuth";
+import { saveCompanyProfile } from "@/lib/apis/salesApi";
 
 export default function CompanyPage() {
-  const x=1
+  const router = useRouter();
+  const { user } = useAuth(true);
   const [companyInfo, setCompanyInfo] = useState({
     name: "",
     description: "",
     website: "",
+    mode: "sales",
+    pitchDetails: "",
     socialLinks: [""], // Start with one empty social link
-    products: [{ name: "", price: "", description: "" }] // Start with one empty product
+    products: [{ name: "", price: "", stock: "", description: "" }] // Start with one empty product
   });
   const [isLoading, setIsLoading] = useState(false);
+  const [submitError, setSubmitError] = useState("");
   
   // Modified to ensure only one section can be open at a time
   const [activeSection, setActiveSection] = useState<'companyInfo' | 'products' | null>('companyInfo');
@@ -26,7 +33,7 @@ export default function CompanyPage() {
     }
   };
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setCompanyInfo((prev) => ({
       ...prev,
@@ -80,7 +87,7 @@ export default function CompanyPage() {
   const addProduct = () => {
     setCompanyInfo((prev) => ({
       ...prev,
-      products: [...prev.products, { name: "", price: "", description: "" }]
+      products: [...prev.products, { name: "", price: "", stock: "", description: "" }]
     }));
   };
 
@@ -97,28 +104,43 @@ export default function CompanyPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitError("");
+
+    if (!user?.id) {
+      setSubmitError("Please log in again before completing onboarding.");
+      return;
+    }
     setIsLoading(true);
 
     try {
-      // Replace with your actual API endpoint for saving company information
-      const response = await fetch("/api/company", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+      const products = companyInfo.products
+        .filter((p) => p.name.trim())
+        .map((p) => ({
+          name: p.name.trim(),
+          price: p.price,
+          stock: p.stock,
+          description: p.description,
+        }));
+
+      await saveCompanyProfile(
+        String(user.id),
+        {
+          company_name: companyInfo.name,
+          description: companyInfo.description,
+          website: companyInfo.website,
+          social_links: companyInfo.socialLinks.filter(Boolean),
+          mode: companyInfo.mode,
+          pitch_details: companyInfo.pitchDetails,
         },
-        body: JSON.stringify(companyInfo),
-      });
+        products
+      );
 
-      if (!response.ok) {
-        throw new Error("Failed to save company information");
-      }
-
-      // Success handling
-      console.log("Company information saved successfully");
-      // Optionally redirect or clear the form here
+      // Trained — go run the agent.
+      router.push("/dashboard");
     } catch (error) {
-      console.error("Error saving company information:", error);
-      // Error handling
+      setSubmitError(
+        error instanceof Error ? error.message : "Failed to save company information"
+      );
     } finally {
       setIsLoading(false);
     }
@@ -203,7 +225,39 @@ export default function CompanyPage() {
                     placeholder="https://example.com"
                   />
                 </div>
-                
+
+                <div>
+                  <label htmlFor="pitchDetails" className="block text-sm font-medium text-gray-700 mb-1">
+                    Sales pitch details (pricing, proof points, target customer)
+                  </label>
+                  <textarea
+                    id="pitchDetails"
+                    name="pitchDetails"
+                    value={companyInfo.pitchDetails}
+                    onChange={handleInputChange}
+                    rows={3}
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="e.g. Target: dental clinics. Pricing: $99/mo. Proof: 60% faster responses. Offer: free 14-day trial."
+                  />
+                  <p className="text-xs text-gray-500 mt-1">This trains your voice agent — the more specific, the sharper the pitch.</p>
+                </div>
+
+                <div>
+                  <label htmlFor="mode" className="block text-sm font-medium text-gray-700 mb-1">
+                    Default agent mode
+                  </label>
+                  <select
+                    id="mode"
+                    name="mode"
+                    value={companyInfo.mode}
+                    onChange={handleInputChange}
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="sales">Sales (pitch &amp; close)</option>
+                    <option value="support">Customer support (help, never sell)</option>
+                  </select>
+                </div>
+
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <label className="block text-sm font-medium text-gray-700">Social Media Links</label>
@@ -319,7 +373,7 @@ export default function CompanyPage() {
                       </div>
                       
                       <div className="space-y-4">
-                        {/* Product name and price in same row - Ensured for all screen sizes */}
+                        {/* Product name, price and live stock in one row */}
                         <div className="flex space-x-4">
                           <div className="flex-1">
                             <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -333,8 +387,8 @@ export default function CompanyPage() {
                               placeholder="Enter product name"
                             />
                           </div>
-                          
-                          <div className="w-1/3">
+
+                          <div className="w-28">
                             <label className="block text-sm font-medium text-gray-700 mb-1">
                               Price
                             </label>
@@ -343,7 +397,20 @@ export default function CompanyPage() {
                               value={product.price}
                               onChange={(e) => handleProductChange(index, "price", e.target.value)}
                               className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
-                              placeholder="Enter price"
+                              placeholder="0.00"
+                            />
+                          </div>
+
+                          <div className="w-24">
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                              Stock
+                            </label>
+                            <input
+                              type="text"
+                              value={product.stock}
+                              onChange={(e) => handleProductChange(index, "stock", e.target.value)}
+                              className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              placeholder="0"
                             />
                           </div>
                         </div>
@@ -379,6 +446,12 @@ export default function CompanyPage() {
             </div>
           </div>
           
+          {submitError && (
+            <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+              {submitError}
+            </p>
+          )}
+
           <div className="mt-8 flex justify-end">
             <button
               type="submit"

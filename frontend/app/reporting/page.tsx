@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
 import {
   BarChart,
@@ -31,6 +31,7 @@ import type { RootState } from "@/app/store/store"
 import { Loader2, AlertCircle, Upload, Database, FileSpreadsheet, HardDrive, FileUp, Users } from "lucide-react"
 import { ApiService } from "@/lib/apis/crmApis"
 import { buildLeadsAnalysisReport } from "@/lib/reporting/leadsReport"
+import { getMetrics, type BusinessMetrics } from "@/lib/apis/salesApi"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Label } from "@/components/ui/label"
@@ -55,6 +56,14 @@ export default function DashboardPage() {
   const [analysisData, setAnalysisData] = useState<AnalysisReport | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Live business metrics (real orders + calls from the AI agent)
+  const [liveMetrics, setLiveMetrics] = useState<BusinessMetrics | null>(null)
+
+  useEffect(() => {
+    if (!user?.id) return
+    getMetrics(String(user.id)).then(setLiveMetrics).catch(() => {})
+  }, [user?.id])
 
   // Chart data states
   const [salesData, setSalesData] = useState<any[]>([])
@@ -773,6 +782,28 @@ const formatInlineContent = (text: string): React.ReactNode => {
     return (
       <div className="p-4">
         <h1 className="text-3xl font-bold mb-6">Business Dashboard</h1>
+
+        {liveMetrics && (
+          <div className="mb-8">
+            <h2 className="text-sm font-semibold text-muted-foreground mb-2">
+              Live agent performance (real calls &amp; orders)
+            </h2>
+            <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
+              <Card className="shadow-sm"><CardHeader className="pb-2"><CardDescription>Revenue</CardDescription></CardHeader>
+                <CardContent><p className="text-2xl font-bold">${liveMetrics.total_sales.toLocaleString()}</p></CardContent></Card>
+              <Card className="shadow-sm"><CardHeader className="pb-2"><CardDescription>Orders</CardDescription></CardHeader>
+                <CardContent><p className="text-2xl font-bold">{liveMetrics.total_orders}</p></CardContent></Card>
+              <Card className="shadow-sm"><CardHeader className="pb-2"><CardDescription>Units sold</CardDescription></CardHeader>
+                <CardContent><p className="text-2xl font-bold">{liveMetrics.units_sold}</p></CardContent></Card>
+              <Card className="shadow-sm"><CardHeader className="pb-2"><CardDescription>Calls</CardDescription></CardHeader>
+                <CardContent><p className="text-2xl font-bold">{liveMetrics.total_calls}</p></CardContent></Card>
+              <Card className="shadow-sm"><CardHeader className="pb-2"><CardDescription>Conversion</CardDescription></CardHeader>
+                <CardContent><p className="text-2xl font-bold">{liveMetrics.conversion_rate}%</p></CardContent></Card>
+              <Card className="shadow-sm"><CardHeader className="pb-2"><CardDescription>Avg sentiment</CardDescription></CardHeader>
+                <CardContent><p className="text-2xl font-bold">{liveMetrics.avg_sentiment ?? "—"}{liveMetrics.avg_sentiment != null ? "%" : ""}</p></CardContent></Card>
+            </div>
+          </div>
+        )}
 
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 mb-8">
           <Card className="shadow-sm">

@@ -21,10 +21,11 @@ from utils.prompts import (
     VOICE_SALES_AGENT_EXPRESSIVE,
     VOICE_SUPPORT_AGENT,
     VOICE_SUPPORT_AGENT_EXPRESSIVE,
+    get_emotion_guidance,
 )
 from utils.example_company.example_customer import example_customer
 from utils.example_company.products_data import Products_data
-from calling_agent import demo_config
+from calling_agent import demo_config, session_store, voice_tools
 from calling_agent.public_url import resolve_public_url
 
 ELEVENLABS_API_BASE = "https://api.elevenlabs.io/v1"
@@ -112,20 +113,67 @@ def _pick_voice_prompt_template(mode: str) -> str:
     return VOICE_SALES_AGENT_EXPRESSIVE if EXPRESSIVE_MODE else VOICE_SALES_AGENT
 
 
-def _build_system_prompt(messages: list | None = None) -> str:
-    """Build the system prompt from the current demo_config (mode + company data).
+def _format_catalog(products: list | None) -> str:
+    """One line per product with price — fed into the prompt so the agent can quote."""
+    if not products:
+        return "(no products configured — use list_products if asked)"
+    lines = []
+    for p in products[:25]:
+        cur = p.get("currency", "USD")
+        lines.append(f"- {p.get('name')}: {cur} {p.get('price')}")
+    return "\n".join(lines)
+
+
+def _profile_blob(session) -> str:
+    p = session.company_profile or {}
+    parts = [f"Company name: {session.company_name}"]
+    if p.get("description"):
+        parts.append(f"About: {p['description']}")
+    if p.get("pitch_details"):
+        parts.append(f"Sales details: {p['pitch_details']}")
+    if p.get("website"):
+        parts.append(f"Website: {p['website']}")
+    return "\n".join(parts)
+
+
+def _build_system_prompt(messages: list | None = None, session=None) -> str:
+    """Build the system prompt.
+
+    With a `session` (authenticated dashboard call) we inject that business's
+    profile + live product catalog + the customer's detected emotion. Without one
+    (anonymous /voice-demo) we fall back to the shared global demo_config.
 
     We use .replace() rather than .format() because company text may contain
     `{` characters that would break str.format.
     """
+    if session is not None:
+        template = _pick_voice_prompt_template(session.mode)
+        base = (
+            template
+            .replace("{company_data}", _profile_blob(session)[:1400])
+            .replace("{company_name}", session.company_name or "our company")
+            .replace("{agent_name}", session.agent_name or "Alex")
+            .replace("{product_catalog}", _format_catalog(session.products))
+        )
+        parts = [base, get_emotion_guidance(session.last_emotion)]
+        if session.escalated or session.human_present:
+            parts.append(
+                "IMPORTANT: A human agent is joining this call. De-escalate, STOP selling, "
+                "keep replies brief, and let the human take over."
+            )
+        parts.append("Current conversation phase:\n" + _conversation_phase_hint(messages or [], session.mode))
+        return "\n\n".join(parts)
+
     cfg = demo_config.current()
     template = _pick_voice_prompt_template(cfg.mode)
     company_blob = cfg.system_company_blob()[:1200]
+    demo_catalog = f"- {cfg.product_name()}: see pitch details above"
     base = (
         template
         .replace("{company_data}", company_blob)
         .replace("{company_name}", cfg.company_name)
         .replace("{agent_name}", cfg.agent_name)
+        .replace("{product_catalog}", demo_catalog)
     )
     phase = _conversation_phase_hint(messages or [], cfg.mode)
     return f"{base}\n\nCurrent conversation phase:\n{phase}"
@@ -294,6 +342,157 @@ def _generate_reply_fast(messages: list) -> str:
     return (response.choices[0].message.content or "").strip()
 
 
+def _opening_hook_session(session) -> str:
+    if session.mode == "support":
+        return (
+            f"Hi, thanks for reaching {session.company_name} support — this is {session.agent_name}. "
+            f"What can I help you with today?"
+        )
+    return (
+        f"Hey — it's {session.agent_name} from {session.company_name}. "
+        f"I'll keep this quick. Got thirty seconds?"
+    )
+
+
+def _generate_reply_session(messages: list, session) -> str:
+    """Session-aware generation WITH tool calling (price/stock/order/escalate).
+
+    One tool round-trip only when the model decides to use a tool, so ordinary
+    chit-chat turns stay single-call and fast.
+    """
+    convo = _trim_convo(messages)
+    if not convo or convo[-1]["role"] != "user":
+        return _opening_hook_session(session)
+
+    model = os.getenv("VOICE_LLM_MODEL", "llama-3.1-8b-instant")
+    groq_messages = [{"role": "system", "content": _build_system_prompt(messages, session)}]
+    groq_messages.extend(convo)
+
+    tools = voice_tools.tool_schemas() if session.products else None
+    client = _groq_client()
+
+    kwargs = dict(model=model, messages=groq_messages, temperature=0.5, max_tokens=320)
+    if tools:
+        kwargs["tools"] = tools
+        kwargs["tool_choice"] = "auto"
+
+    resp = client.chat.completions.create(**kwargs)
+    msg = resp.choices[0].message
+    tool_calls = getattr(msg, "tool_calls", None)
+
+    if tool_calls:
+        groq_messages.append({
+            "role": "assistant",
+            "content": msg.content or "",
+            "tool_calls": [voice_tools.serialize_tool_call(tc) for tc in tool_calls],
+        })
+        for tc in tool_calls:
+            try:
+                args = json.loads(tc.function.arguments or "{}")
+            except Exception:
+                args = {}
+            result = voice_tools.dispatch(tc.function.name, args, session)
+            groq_messages.append({
+                "role": "tool",
+                "tool_call_id": tc.id,
+                "content": json.dumps(result),
+            })
+        # Second pass: turn tool results into a natural spoken reply.
+        resp2 = client.chat.completions.create(
+            model=model, messages=groq_messages, temperature=0.6, max_tokens=200
+        )
+        return (resp2.choices[0].message.content or "").strip()
+
+    return (msg.content or "").strip()
+
+
+def _stream_session_tokens(messages: list, session):
+    """Stream tokens for a session call WITH tool support, low latency.
+
+    Ordinary turns stream straight from the first Groq call (first audio in
+    ~1s). Only when the model actually emits a tool call do we buffer, run the
+    tool, and stream the follow-up reply — so price/stock/order turns still work
+    without slowing down normal conversation.
+    """
+    convo = _trim_convo(messages)
+    if not convo or convo[-1]["role"] != "user":
+        yield _opening_hook_session(session) + " "
+        return
+
+    model = os.getenv("VOICE_LLM_MODEL", "llama-3.1-8b-instant")
+    groq_messages = [{"role": "system", "content": _build_system_prompt(messages, session)}]
+    groq_messages.extend(convo)
+    tools = voice_tools.tool_schemas() if session.products else None
+    client = _groq_client()
+
+    kwargs = dict(model=model, messages=groq_messages, temperature=0.5, max_tokens=320, stream=True)
+    if tools:
+        kwargs["tools"] = tools
+        kwargs["tool_choice"] = "auto"
+
+    stream = client.chat.completions.create(**kwargs)
+    tool_calls: dict = {}      # index -> {id, name, args}
+    content_started = False
+    for chunk in stream:
+        if not chunk.choices:
+            continue
+        delta = chunk.choices[0].delta
+        if getattr(delta, "content", None):
+            content_started = True
+            yield delta.content
+        if getattr(delta, "tool_calls", None):
+            for tc in delta.tool_calls:
+                slot = tool_calls.setdefault(tc.index, {"id": "", "name": "", "args": ""})
+                if tc.id:
+                    slot["id"] = tc.id
+                if tc.function and tc.function.name:
+                    slot["name"] = tc.function.name
+                if tc.function and tc.function.arguments:
+                    slot["args"] += tc.function.arguments
+
+    # No tool call → we already streamed the whole reply.
+    if not tool_calls or content_started:
+        return
+
+    # Tool path: execute, then stream the natural-language follow-up.
+    groq_messages.append({
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [
+            {"id": s["id"], "type": "function",
+             "function": {"name": s["name"], "arguments": s["args"] or "{}"}}
+            for s in tool_calls.values()
+        ],
+    })
+    for s in tool_calls.values():
+        try:
+            args = json.loads(s["args"] or "{}")
+        except Exception:
+            args = {}
+        result = voice_tools.dispatch(s["name"], args, session)
+        groq_messages.append({"role": "tool", "tool_call_id": s["id"], "content": json.dumps(result)})
+
+    stream2 = client.chat.completions.create(
+        model=model, messages=groq_messages, temperature=0.6, max_tokens=200, stream=True
+    )
+    for chunk in stream2:
+        if chunk.choices and getattr(chunk.choices[0].delta, "content", None):
+            yield chunk.choices[0].delta.content
+
+
+def _chunk_text(text: str):
+    """Yield a string in small word-groups so SSE output still feels streamed."""
+    words = text.split(" ")
+    group = []
+    for w in words:
+        group.append(w)
+        if len(group) >= 3:
+            yield " ".join(group) + " "
+            group = []
+    if group:
+        yield " ".join(group)
+
+
 def _safe_answer(text: str | None) -> str:
     cleaned = _clean_voice_reply(str(text)) if text else ""
     if cleaned:
@@ -394,6 +593,14 @@ def register_elevenlabs_routes(app):
         body = request.get_json(force=True, silent=True) or {}
         messages = body.get("messages", []) or []
         model = body.get("model") or "sales-agent"
+        # Authenticated dashboard calls pass ?session_id=... (set in the VAPI
+        # assistant's model.url). When present we use the per-business session +
+        # tool calling; otherwise we fall back to the global demo path.
+        session_id = request.args.get("session_id")
+        # Guard against providers that append to the path (e.g. ".../?session_id=X/chat/completions").
+        if session_id:
+            session_id = session_id.split("/")[0].strip()
+        session = session_store.get_session(session_id) if session_id else None
         # ElevenLabs may omit stream; default True for voice latency.
         stream = body.get("stream", True)
         if isinstance(stream, str):
@@ -413,9 +620,11 @@ def register_elevenlabs_routes(app):
 
         if not stream:
             try:
-                answer = _safe_answer(
-                    _executor.submit(_generate_reply, messages).result(timeout=120)
-                )
+                if session is not None:
+                    gen = lambda: _generate_reply_session(messages, session)
+                else:
+                    gen = lambda: _generate_reply(messages)
+                answer = _safe_answer(_executor.submit(gen).result(timeout=120))
             except Exception as e:
                 print(f"[custom-llm] error: {e}")
                 answer = "Sorry, could you repeat that?"
@@ -436,12 +645,22 @@ def register_elevenlabs_routes(app):
                 }
             )
 
+        def _delta_source():
+            """Token source for SSE. Both paths stream tokens immediately for low
+            latency; the session path also supports tools (price/stock/order)."""
+            if session is not None:
+                for delta in _stream_session_tokens(messages, session):
+                    yield delta
+            else:
+                for delta in _stream_groq_tokens(messages):
+                    yield delta
+
         def event_stream():
             try:
                 # Stream token deltas immediately — sentence buffering delayed first byte
                 # and caused VAPI to sit on "listening" until timeout.
                 preview_parts = []
-                for delta in _stream_groq_tokens(messages):
+                for delta in _delta_source():
                     preview_parts.append(delta)
                     yield _sse_chunk(
                         {
