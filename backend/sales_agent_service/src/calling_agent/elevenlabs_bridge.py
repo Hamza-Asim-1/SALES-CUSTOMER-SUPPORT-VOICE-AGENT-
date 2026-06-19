@@ -422,6 +422,9 @@ def _stream_session_tokens(messages: list, session):
     without slowing down normal conversation.
     """
     convo = _trim_convo(messages)
+    if not convo or convo[-1]["role"] != "user":
+        yield _opening_hook_session(session) + " "
+        return
 
     model = os.getenv("VOICE_LLM_MODEL", "llama-3.1-8b-instant")
     groq_messages = [{"role": "system", "content": _build_system_prompt(messages, session)}]
@@ -518,6 +521,10 @@ def _stream_groq_tokens(messages: list):
     convo = [
         m for m in _normalize_messages(messages) if m["role"] in ("user", "assistant")
     ]
+    if not convo or convo[-1]["role"] != "user":
+        yield _opening_hook(demo_config.current()) + " "
+        return
+
 
     model = os.getenv("VOICE_LLM_MODEL", "llama-3.1-8b-instant")
     groq_messages = [{"role": "system", "content": _build_system_prompt(messages)}]
