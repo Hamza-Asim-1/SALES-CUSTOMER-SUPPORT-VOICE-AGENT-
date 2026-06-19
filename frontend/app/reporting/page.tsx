@@ -288,9 +288,11 @@ const formatInlineContent = (text: string): React.ReactNode => {
 
     try {
       const response = await ApiService.getMappedUserData(user.id)
-      const rows = response.data?.data?.data
+      // CRM returns {data: [...]}, axios wraps => {data: {data: [...]}},
+      // ApiService wraps => {success, data: {data: [...]}}.
+      const rows = response.data?.data ?? response.data
 
-      if (!response.success || !rows?.length) {
+      if (!response.success || !Array.isArray(rows) || !rows.length) {
         throw new Error("No leads found in your dashboard. Upload CRM data or run the demo seed script first.")
       }
 

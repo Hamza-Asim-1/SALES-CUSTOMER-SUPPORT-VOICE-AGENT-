@@ -312,13 +312,14 @@ _groq_singleton: Groq | None = None
 def _groq_client() -> Groq:
     # Reuse one client so the TLS/HTTP connection to Groq stays warm (cuts ~100-300ms per call).
     # max_retries=1 prevents the SDK from blocking 60+s on rate-limit retries;
-    # timeout=4.5 ensures we fail fast if Groq is slow (VAPI disconnects at ~5s).
+    # timeout=12 allows enough headroom for tool-call flows (2 Groq round-trips + dispatch).
+    # The filler text "Let me check that for you..." keeps VAPI from disconnecting.
     global _groq_singleton
     if _groq_singleton is None:
         api_key = os.getenv("GROQ_API_KEY")
         if not api_key:
             raise RuntimeError("GROQ_API_KEY is not configured")
-        _groq_singleton = Groq(api_key=api_key, max_retries=1, timeout=4.5)
+        _groq_singleton = Groq(api_key=api_key, max_retries=1, timeout=12)
     return _groq_singleton
 
 

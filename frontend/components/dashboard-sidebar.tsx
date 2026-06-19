@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useSelector } from 'react-redux';
 import { usePathname } from "next/navigation"
-import { BarChart3, Database, Headphones, Home, Settings, LogOut, Bell, HelpCircle, ShoppingCart, Package } from "lucide-react"
+import { BarChart3, Database, Headphones, Home, Settings, LogOut, HelpCircle, ShoppingCart, Package } from "lucide-react"
 import { motion } from "framer-motion"
 import { cn } from "@/lib/utils"
 import { RootState } from "@/app/store/store";
@@ -206,45 +206,6 @@ export function DashboardSidebar() {
                   </SidebarMenuItem>
                 ))}
               </TooltipProvider>
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-
-        <SidebarSeparator className="my-6 bg-gradient-to-r from-transparent via-gray-200 to-transparent h-px" />
-
-        <SidebarGroup>
-          <SidebarGroupLabel className="text-base font-bold text-gray-600 px-4 py-5">NOTIFICATIONS</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              <SidebarMenuItem className="mb-5">
-                <motion.div
-                  whileHover="hover"
-                  whileTap="tap"
-                  variants={menuItemVariants}
-                  className="w-full rounded-xl overflow-hidden"
-                >
-                  <SidebarMenuButton 
-                    className="py-5 px-5 rounded-xl hover:bg-gray-100 text-lg transition-all duration-300"
-                    onClick={() => handleNavigation("/notifications")}
-                  >
-                    <Bell className="mr-5 h-7 w-7 text-gray-600" />
-                    <span className="font-medium text-gray-700">Notifications</span>
-                    <motion.span 
-                      className="ml-auto bg-primary text-primary-foreground text-sm rounded-full px-4 py-1 font-bold"
-                      whileHover={{ 
-                        scale: 1.1, 
-                        transition: { 
-                          duration: 0.2,
-                          repeat: 1,
-                          repeatType: "reverse" 
-                        } 
-                      }}
-                    >
-                      3
-                    </motion.span>
-                  </SidebarMenuButton>
-                </motion.div>
-              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
