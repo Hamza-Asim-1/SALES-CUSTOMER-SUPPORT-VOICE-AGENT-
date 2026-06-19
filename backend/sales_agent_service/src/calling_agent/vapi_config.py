@@ -70,7 +70,6 @@ def build_vapi_assistant(session=None) -> dict:
 
     assistant = {
         "name": f"{company_name} — {mode_label}",
-        "firstMessage": first_message,
         "firstMessageMode": "assistant-speaks-first",
         # Realistic ambience so the call doesn't sound sterile.
         "backgroundSound": _background_sound(),
