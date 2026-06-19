@@ -253,7 +253,7 @@ def _compact_product() -> dict:
     }
 
 
-def _trim_convo(messages: list, max_turns: int = 8) -> list[dict]:
+def _trim_convo(messages: list, max_turns: int = 6) -> list[dict]:
     convo = [
         m for m in _normalize_messages(messages) if m["role"] in ("user", "assistant")
     ]
@@ -311,12 +311,14 @@ _groq_singleton: Groq | None = None
 
 def _groq_client() -> Groq:
     # Reuse one client so the TLS/HTTP connection to Groq stays warm (cuts ~100-300ms per call).
+    # max_retries=1 prevents the SDK from blocking 60+s on rate-limit retries;
+    # timeout=4.5 ensures we fail fast if Groq is slow (VAPI disconnects at ~5s).
     global _groq_singleton
     if _groq_singleton is None:
         api_key = os.getenv("GROQ_API_KEY")
         if not api_key:
             raise RuntimeError("GROQ_API_KEY is not configured")
-        _groq_singleton = Groq(api_key=api_key)
+        _groq_singleton = Groq(api_key=api_key, max_retries=1, timeout=4.5)
     return _groq_singleton
 
 
@@ -333,13 +335,17 @@ def _generate_reply_fast(messages: list) -> str:
     groq_messages = [{"role": "system", "content": _build_system_prompt(messages)}]
     groq_messages.extend(convo)
 
-    response = _groq_client().chat.completions.create(
-        model=model,
-        messages=groq_messages,
-        temperature=0.65,
-        max_tokens=180,
-    )
-    return (response.choices[0].message.content or "").strip()
+    try:
+        response = _groq_client().chat.completions.create(
+            model=model,
+            messages=groq_messages,
+            temperature=0.5,
+            max_tokens=120,
+        )
+        return (response.choices[0].message.content or "").strip()
+    except Exception as e:
+        print(f"[custom-llm] Groq fast-reply error: {e}")
+        return "Sorry, I had a brief hiccup. Could you repeat that?"
 
 
 def _opening_hook_session(session) -> str:
@@ -425,59 +431,68 @@ def _stream_session_tokens(messages: list, session):
     tools = voice_tools.tool_schemas() if session.products else None
     client = _groq_client()
 
-    kwargs = dict(model=model, messages=groq_messages, temperature=0.5, max_tokens=320, stream=True)
+    kwargs = dict(model=model, messages=groq_messages, temperature=0.5, max_tokens=150, stream=True)
     if tools:
         kwargs["tools"] = tools
         kwargs["tool_choice"] = "auto"
 
-    stream = client.chat.completions.create(**kwargs)
-    tool_calls: dict = {}      # index -> {id, name, args}
-    content_started = False
-    for chunk in stream:
-        if not chunk.choices:
-            continue
-        delta = chunk.choices[0].delta
-        if getattr(delta, "content", None):
-            content_started = True
-            yield delta.content
-        if getattr(delta, "tool_calls", None):
-            for tc in delta.tool_calls:
-                slot = tool_calls.setdefault(tc.index, {"id": "", "name": "", "args": ""})
-                if tc.id:
-                    slot["id"] = tc.id
-                if tc.function and tc.function.name:
-                    slot["name"] = tc.function.name
-                if tc.function and tc.function.arguments:
-                    slot["args"] += tc.function.arguments
+    try:
+        stream = client.chat.completions.create(**kwargs)
+        tool_calls: dict = {}      # index -> {id, name, args}
+        content_text = ""
+        for chunk in stream:
+            if not chunk.choices:
+                continue
+            delta = chunk.choices[0].delta
+            if getattr(delta, "content", None):
+                content_text += delta.content
+                yield delta.content
+            if getattr(delta, "tool_calls", None):
+                for tc in delta.tool_calls:
+                    slot = tool_calls.setdefault(tc.index, {"id": "", "name": "", "args": ""})
+                    if tc.id:
+                        slot["id"] = tc.id
+                    if tc.function and tc.function.name:
+                        slot["name"] = tc.function.name
+                    if tc.function and tc.function.arguments:
+                        slot["args"] += tc.function.arguments
 
-    # No tool call → we already streamed the whole reply.
-    if not tool_calls or content_started:
-        return
+        # No tool call → we already streamed the whole reply.
+        if not tool_calls:
+            return
 
-    # Tool path: execute, then stream the natural-language follow-up.
-    groq_messages.append({
-        "role": "assistant",
-        "content": "",
-        "tool_calls": [
-            {"id": s["id"], "type": "function",
-             "function": {"name": s["name"], "arguments": s["args"] or "{}"}}
-            for s in tool_calls.values()
-        ],
-    })
-    for s in tool_calls.values():
-        try:
-            args = json.loads(s["args"] or "{}")
-        except Exception:
-            args = {}
-        result = voice_tools.dispatch(s["name"], args, session)
-        groq_messages.append({"role": "tool", "tool_call_id": s["id"], "content": json.dumps(result)})
+        # Yield filler text so VAPI has something to say while we run the tool
+        # only if the LLM didn't already say anything.
+        if not content_text:
+            yield "Let me check that for you... "
 
-    stream2 = client.chat.completions.create(
-        model=model, messages=groq_messages, temperature=0.6, max_tokens=200, stream=True
-    )
-    for chunk in stream2:
-        if chunk.choices and getattr(chunk.choices[0].delta, "content", None):
-            yield chunk.choices[0].delta.content
+        # Tool path: execute, then stream the natural-language follow-up.
+        groq_messages.append({
+            "role": "assistant",
+            "content": content_text,
+            "tool_calls": [
+                {"id": s["id"], "type": "function",
+                 "function": {"name": s["name"], "arguments": s["args"] or "{}"}}
+                for s in tool_calls.values()
+            ],
+        })
+        for s in tool_calls.values():
+            try:
+                args = json.loads(s["args"] or "{}")
+            except Exception:
+                args = {}
+            result = voice_tools.dispatch(s["name"], args, session)
+            groq_messages.append({"role": "tool", "tool_call_id": s["id"], "content": json.dumps(result)})
+
+        stream2 = client.chat.completions.create(
+            model=model, messages=groq_messages, temperature=0.6, max_tokens=200, stream=True
+        )
+        for chunk in stream2:
+            if chunk.choices and getattr(chunk.choices[0].delta, "content", None):
+                yield chunk.choices[0].delta.content
+    except Exception as e:
+        print(f"[custom-llm] Groq session-stream error: {e}")
+        yield "Sorry, I had a brief hiccup. Could you repeat that?"
 
 
 def _chunk_text(text: str):
@@ -513,17 +528,21 @@ def _stream_groq_tokens(messages: list):
     groq_messages = [{"role": "system", "content": _build_system_prompt(messages)}]
     groq_messages.extend(convo)
 
-    stream = _groq_client().chat.completions.create(
-        model=model,
-        messages=groq_messages,
-        temperature=0.65,
-        max_tokens=180,
-        stream=True,
-    )
-    for chunk in stream:
-        delta = chunk.choices[0].delta.content if chunk.choices else None
-        if delta:
-            yield delta
+    try:
+        stream = _groq_client().chat.completions.create(
+            model=model,
+            messages=groq_messages,
+            temperature=0.5,
+            max_tokens=120,
+            stream=True,
+        )
+        for chunk in stream:
+            delta = chunk.choices[0].delta.content if chunk.choices else None
+            if delta:
+                yield delta
+    except Exception as e:
+        print(f"[custom-llm] Groq stream error: {e}")
+        yield "Sorry, I had a brief hiccup. Could you repeat that?"
 
 
 # Sentence terminator (incl. "..." and trailing quotes/brackets) used to flush

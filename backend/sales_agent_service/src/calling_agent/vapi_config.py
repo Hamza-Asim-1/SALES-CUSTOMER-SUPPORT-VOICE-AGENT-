@@ -98,6 +98,8 @@ def build_vapi_assistant(session=None) -> dict:
         # Don't hang up while the user is thinking.
         "silenceTimeoutSeconds": 45,
         # Turn-taking: commit user speech faster; don't wait forever on partials.
+        "endCallFunctionEnabled": True,
+        "endCallPhrases": ["bye", "goodbye", "have a good day", "talk to you later"],
         "startSpeakingPlan": {
             "waitSeconds": 0.35,
             "smartEndpointingEnabled": True,

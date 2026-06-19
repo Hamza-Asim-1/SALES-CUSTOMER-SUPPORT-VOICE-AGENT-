@@ -537,4 +537,6 @@ def tts1(text: str) -> str:
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "8000"))
-    app.run(host="0.0.0.0", port=port, debug=False)
+    # threaded=True so concurrent VAPI requests don't block when one Groq call
+    # is slow or rate-limited (Flask's default is single-threaded).
+    app.run(host="0.0.0.0", port=port, debug=False, threaded=True)

@@ -191,9 +191,11 @@ export default function SalesAgentPage() {
     }
   }
 
-  // Add useEffect to fetch data on component mount
+  // Add useEffect to fetch data once the user id is resolved (avoids race on mount)
   useEffect(() => {
-    fetchLeadData()
+    if (user?.id) {
+      fetchLeadData()
+    }
   }, [user?.id])
 
   // Handle refresh button click

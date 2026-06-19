@@ -60,7 +60,7 @@ def tool_schemas() -> List[Dict[str, Any]]:
             "type": "function",
             "function": {
                 "name": "place_order",
-                "description": "Place a confirmed order for the customer. ONLY call this after the customer has explicitly agreed to the product, quantity, and total price.",
+                "description": "Place a confirmed order for the customer. ONLY call this after the customer has explicitly agreed to the product, quantity, and total price. For physical products or services delivered to a location, you MUST ask the customer for their delivery address BEFORE calling this tool.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -68,6 +68,7 @@ def tool_schemas() -> List[Dict[str, Any]]:
                         "quantity": {"type": "integer", "minimum": 1},
                         "customer_name": {"type": "string"},
                         "customer_contact": {"type": "string"},
+                        "delivery_address": {"type": "string", "description": "Full delivery/service address. Required for physical products or on-site services. Not needed for digital/online services."},
                     },
                     "required": ["product_name", "quantity"],
                 },
@@ -129,6 +130,7 @@ def dispatch(name: str, args: Dict[str, Any], session) -> Dict[str, Any]:
                 session_id=session.session_id,
                 customer_name=args.get("customer_name") or session.customer.get("customer_name"),
                 customer_contact=args.get("customer_contact") or session.customer.get("customer_contact"),
+                delivery_address=args.get("delivery_address"),
             )
             if result.get("ok"):
                 order = result["order"]

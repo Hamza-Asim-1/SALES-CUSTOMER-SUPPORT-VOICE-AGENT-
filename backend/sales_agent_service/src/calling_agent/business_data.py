@@ -289,6 +289,7 @@ def place_order(
     session_id: Optional[str] = None,
     customer_name: Optional[str] = None,
     customer_contact: Optional[str] = None,
+    delivery_address: Optional[str] = None,
 ) -> Dict[str, Any]:
     quantity = int(quantity)
     if quantity <= 0:
@@ -318,6 +319,7 @@ def place_order(
         "status": "confirmed",
         "customer_name": customer_name,
         "customer_contact": customer_contact,
+        "delivery_address": delivery_address,
     }
 
     if not _cache_on():
